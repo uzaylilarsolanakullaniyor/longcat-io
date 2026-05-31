@@ -214,42 +214,57 @@
 
   #leaderboard {
     position: absolute;
-    top: 16px;
-    right: 16px;
+    top: 8px;
+    right: 8px;
     background: rgba(0,0,0,0.6);
     border: 1.5px solid rgba(255,107,255,0.25);
-    border-radius: 16px;
-    padding: 14px 18px;
-    min-width: 180px;
-    max-width: 220px;
+    border-radius: 10px;
+    padding: 7px 9px;
+    min-width: 110px;
+    max-width: 140px;
   }
 
   #leaderboard h3 {
     font-family: 'Fredoka One', cursive;
-    font-size: 0.95rem;
+    font-size: 0.6rem;
     color: #ff6bff;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     text-transform: uppercase;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
     text-align: center;
   }
 
   .lb-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    font-size: 0.82rem;
+    gap: 4px;
+    padding: 2px 0;
+    font-size: 0.58rem;
     color: rgba(255,255,255,0.85);
     font-weight: 700;
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
 
   .lb-row:last-child { border-bottom: none; }
-  .lb-rank { color: #a78bfa; width: 16px; font-family: 'Fredoka One', cursive; }
+  .lb-rank { color: #a78bfa; width: 11px; font-family: 'Fredoka One', cursive; }
   .lb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lb-score { color: #ff6bff; font-family: 'Fredoka One', cursive; }
-  .lb-row.is-player { color: #fff; background: rgba(255,107,255,0.12); border-radius: 8px; padding: 4px 6px; }
+  .lb-row.is-player { color: #fff; background: rgba(255,107,255,0.12); border-radius: 5px; padding: 2px 3px; }
+
+  @media (min-width: 768px) {
+    #leaderboard {
+      top: 16px;
+      right: 16px;
+      border-radius: 16px;
+      padding: 14px 18px;
+      min-width: 180px;
+      max-width: 220px;
+    }
+    #leaderboard h3 { font-size: 0.95rem; letter-spacing: 2px; margin-bottom: 10px; }
+    .lb-row { gap: 8px; padding: 4px 0; font-size: 0.82rem; }
+    .lb-rank { width: 16px; }
+    .lb-row.is-player { border-radius: 8px; padding: 4px 6px; }
+  }
 
   #boostHint {
     position: absolute;
