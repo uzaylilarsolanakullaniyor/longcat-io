@@ -349,16 +349,20 @@ const WORLD_H   = 3200;  // world height in pixels
 const CELL_SIZE = 80;    // grid cell size for spatial hashing
 
 // ---------- GAME SPEEDS & TUNING ----------
-const BASE_SPEED    = 1.9;   // normal movement speed
-const BOOST_SPEED   = 3.5;   // boosted speed
-const BOOST_COST    = 2;     // frames between segment removal while boosting
-const SEGMENT_GAP   = 10;    // distance between body segments
-const SEGMENT_RADIUS= 10;    // half-width of body segment
-const HEAD_RADIUS   = 14;    // half-size of cat head
-const MIN_LENGTH    = 8;     // minimum segments before you can die from boost
-const FOOD_COUNT    = 380;   // total food pellets on map
-const BOT_COUNT     = 18;    // number of AI bots
-const TURN_SPEED    = 0.10;  // radians per frame for turning
+// All speeds are in pixels-per-second (delta time based).
+// At 60 FPS: old 1.9 px/frame == 114 px/s, old 3.5 == 210 px/s.
+const BASE_SPEED      = 114;  // px/second — normal movement
+const BOOST_SPEED     = 210;  // px/second — boosted movement
+const BOOST_COST_S    = 0.033;// seconds between tail-shrink ticks while boosting
+const SEGMENT_GAP     = 10;   // distance between body segments (world units)
+const SEGMENT_RADIUS  = 10;   // half-width of body segment
+const HEAD_RADIUS     = 14;   // half-size of cat head
+const MIN_LENGTH      = 8;    // minimum segments before you can die from boost
+const FOOD_COUNT      = 380;  // total food pellets on map
+const BOT_COUNT       = 18;   // number of AI bots
+const TURN_SPEED      = 6.0;  // radians/second (was 0.10 rad/frame * 60fps)
+const AI_RETARGET_MIN = 0.33; // seconds — bot AI re-evaluation interval min
+const AI_RETARGET_MAX = 0.83; // seconds — bot AI re-evaluation interval max
 
 // ---------- FAMOUS SINGER NAMES for bots ----------
 const SINGER_NAMES = [
@@ -391,9 +395,10 @@ let camera = { x: 0, y: 0 };
 let mouseX = canvas.width  / 2;
 let mouseY = canvas.height / 2;
 let mouseDown  = false;
-let gameRunning = false;
-let frameCount  = 0;
-let deadFoods   = []; // food dropped by dead cats
+let gameRunning    = false;
+let frameCount     = 0;
+let deadFoods      = []; // food dropped by dead cats
+let lastTimestamp  = 0;  // for delta time calculation
 
 // Spatial hash grid for efficient collision detection
 let grid = {};
@@ -485,7 +490,7 @@ class Food {
     this.pulse = rand(0, Math.PI * 2); // animation phase
   }
 
-  update() { this.pulse += 0.08; }
+  update(dt) { this.pulse += 5.0 * dt; } // 5 rad/s pulse (was 0.08 rad/frame * 60fps)
 
   draw(cx, cy) {
     const sx = this.x - cx;
@@ -555,20 +560,21 @@ class Snake {
 
   get length() { return this.segments.length; }
 
-  // Turn towards a target angle smoothly
-  steerTowards(targetAngle) {
-    const diff = normalizeAngle(targetAngle - this.angle);
-    const maxTurn = TURN_SPEED;
-    this.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
+  // Turn towards a target angle smoothly — dt in seconds
+  steerTowards(targetAngle, dt) {
+    const diff    = normalizeAngle(targetAngle - this.angle);
+    const maxTurn = TURN_SPEED * dt;
+    this.angle   += Math.max(-maxTurn, Math.min(maxTurn, diff));
   }
 
-  // Move the snake forward, push new head, pop last segment
-  move() {
-    this.speed = (this.boosting && this.length > MIN_LENGTH) ? BOOST_SPEED : BASE_SPEED;
+  // Move the snake forward — dt in seconds
+  move(dt) {
+    const spd = (this.boosting && this.length > MIN_LENGTH) ? BOOST_SPEED : BASE_SPEED;
+    const dist = spd * dt; // pixels to travel this frame
 
     const newHead = {
-      x: this.head.x + Math.cos(this.angle) * this.speed,
-      y: this.head.y + Math.sin(this.angle) * this.speed
+      x: this.head.x + Math.cos(this.angle) * dist,
+      y: this.head.y + Math.sin(this.angle) * dist
     };
 
     // Wrap around world edges
@@ -586,8 +592,8 @@ class Snake {
 
     // Consume tail segment while boosting (snake shrinks)
     if (this.boosting && this.length > MIN_LENGTH) {
-      this.boostTimer++;
-      if (this.boostTimer >= BOOST_COST) {
+      this.boostTimer += dt;
+      if (this.boostTimer >= BOOST_COST_S) {
         this.boostTimer = 0;
         const tail = this.segments.pop();
         // Drop a small food where the tail was
@@ -603,11 +609,11 @@ class Snake {
     this.score   += amount;
   }
 
-  // ---- BOT AI ----
-  updateAI(allSnakes) {
-    this.aiTimer--;
+  // ---- BOT AI ---- dt in seconds
+  updateAI(allSnakes, dt) {
+    this.aiTimer -= dt;
     if (this.aiTimer > 0) return;
-    this.aiTimer = randInt(20, 50); // re-evaluate every 20-50 frames
+    this.aiTimer = rand(AI_RETARGET_MIN, AI_RETARGET_MAX); // re-evaluate every 0.33-0.83s
 
     const head = this.head;
 
@@ -1042,9 +1048,16 @@ function drawBackground() {
 // =====================================================================
 // MAIN GAME LOOP
 // =====================================================================
-function gameLoop() {
+function gameLoop(timestamp) {
   if (!gameRunning) return;
   requestAnimationFrame(gameLoop);
+
+  // --- Delta time calculation ---
+  // Cap dt at 100ms to avoid huge jumps after tab switch or lag spike
+  const dt = Math.min((timestamp - lastTimestamp) / 1000, 0.1);
+  lastTimestamp = timestamp;
+  if (dt <= 0) return; // skip first frame where dt would be 0
+
   frameCount++;
 
   const allSnakes = [player, ...bots];
@@ -1054,18 +1067,18 @@ function gameLoop() {
     const worldMouseX = mouseX + camera.x;
     const worldMouseY = mouseY + camera.y;
     const targetAngle = angleTo(player.head, { x: worldMouseX, y: worldMouseY });
-    player.steerTowards(targetAngle);
+    player.steerTowards(targetAngle, dt);
     player.boosting = mouseDown && player.length > MIN_LENGTH;
-    player.move();
+    player.move(dt);
     player.growing = player.growing || 0;
   }
 
   // --- Update bots ---
   for (const bot of bots) {
     if (!bot.alive) {
-      // Respawn dead bot after a delay
-      if (!bot.respawnTimer) bot.respawnTimer = 180;
-      bot.respawnTimer--;
+      // Respawn dead bot after a delay (3 seconds)
+      if (!bot.respawnTimer) bot.respawnTimer = 3.0;
+      bot.respawnTimer -= dt;
       if (bot.respawnTimer <= 0) {
         const idx = bots.indexOf(bot);
         bots[idx] = new Snake(nextSinger(), randPalette(), false);
@@ -1074,19 +1087,19 @@ function gameLoop() {
       continue;
     }
     bot.growing = bot.growing || 0;
-    bot.updateAI(allSnakes);
-    bot.steerTowards(bot.targetAngle);
-    bot.move();
+    bot.updateAI(allSnakes, dt);
+    bot.steerTowards(bot.targetAngle, dt);
+    bot.move(dt);
   }
 
   // --- Update food animations ---
-  for (const f of foods)     f.update();
-  for (const f of deadFoods) f.update();
+  for (const f of foods)     f.update(dt);
+  for (const f of deadFoods) f.update(dt);
 
   // --- Collisions ---
   checkCollisions(allSnakes);
 
-  // --- Maintain food density ---
+  // --- Maintain food density (every ~0.5s) ---
   if (frameCount % 30 === 0) maintainFoods();
 
   // --- Camera ---
@@ -1166,7 +1179,8 @@ function startGame(playerName) {
   hud.classList.add('show');
 
   gameRunning = true;
-  gameLoop();
+  lastTimestamp = 0;
+  requestAnimationFrame(ts => { lastTimestamp = ts; requestAnimationFrame(gameLoop); });
 }
 
 // =====================================================================
